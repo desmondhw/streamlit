@@ -64,9 +64,6 @@ def fetch_hyperliquid_funding(coin="ETH", days=7, hours_per_request=500):
             break
         current_start_time = current_end_time
 
-    # Filter rows to only keep those at 07:00
-    final_df = final_df[final_df['time'].dt.hour == 7]
-
     return final_df
 
 # Function to merge Hyperliquid and AAVE data on timestamp
