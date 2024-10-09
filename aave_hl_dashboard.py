@@ -89,12 +89,16 @@ def merge_data(hyperliquid_df, usdc_df, weth_df):
 # Fetching and processing data
 st.title("Aave-HL Arb Dashboard")
 
-# Create dropdowns for coin and days
-col1, col2 = st.columns([1, 3])
+# Create input widgets for coin, days, Leverage, and LTV with adjusted column widths
+col1, col2, col3, col4 = st.columns([2, 2, 1, 1])  # Adjusted widths
 with col1:
     coin = st.selectbox("Select Coin", ["ETH"], key='coin')
 with col2:
     days = st.slider("Select Days", min_value=1, max_value=365, value=7, key='days')
+with col3:
+    leverage = st.number_input("Leverage", min_value=0.1, max_value=10.0, value=1.0, step=0.1, key='leverage')
+with col4:
+    ltv = st.number_input("LTV", min_value=0.0, max_value=1.0, value=0.67, step=0.01, key='ltv')
 
 # Main Execution
 # Fetch Hyperliquid funding data
@@ -106,14 +110,19 @@ usdc_df, weth_df = fetch_aave_data()
 # Merge Hyperliquid data with AAVE data based on timestamps
 merged_df = merge_data(hyperliquid_df, usdc_df, weth_df)
 
-# Calculate arb_return
-merged_df['arb_return'] = merged_df['annualizedFundingRate'] + merged_df['weth_lend_rate'] - merged_df['usdc_borrow_rate']
+# Adjust usdc_borrow_rate and weth_lend_rate based on Leverage and LTV
+merged_df['adjusted_usdc_borrow_rate'] = merged_df['usdc_borrow_rate'] * leverage * ltv
+merged_df['adjusted_weth_lend_rate'] = merged_df['weth_lend_rate'] * leverage
+merged_df['annualizedFundingRate'] = merged_df['annualizedFundingRate'] * leverage
+
+# Calculate arb_return using adjusted rates
+merged_df['arb_return'] = merged_df['annualizedFundingRate'] + merged_df['adjusted_weth_lend_rate'] - merged_df['adjusted_usdc_borrow_rate']
 
 # Display statistics
 if not merged_df.empty:
     hyperliquid_avg = merged_df['annualizedFundingRate'].mean()
-    weth_lend_avg = merged_df['weth_lend_rate'].mean()
-    usdc_borrow_avg = merged_df['usdc_borrow_rate'].mean()
+    adjusted_weth_lend_avg = merged_df['adjusted_weth_lend_rate'].mean()
+    adjusted_usdc_borrow_avg = merged_df['adjusted_usdc_borrow_rate'].mean()
     arb = merged_df['arb_return'].mean()
 
     # Display statistics in a styled format
@@ -148,12 +157,12 @@ if not merged_df.empty:
             <div class="stat-label">Average Hyperliquid Funding Rate</div>
         </div>
         <div class="stat">
-            {round(usdc_borrow_avg, 2)}%
+            {round(adjusted_usdc_borrow_avg, 2)}%
             <div class="stat-label">Average AAVE USDC Borrow Rate</div>
         </div>
         <div class="stat">
-            {round(weth_lend_avg, 2)}%
-            <div class="stat-label">Average AAVE WETH Lending Ratee</div>
+            {round(adjusted_weth_lend_avg, 2)}%
+            <div class="stat-label">Average AAVE WETH Lending Rate</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -162,28 +171,28 @@ if not merged_df.empty:
     fig_arb = go.Figure()
     fig_arb.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['arb_return'],
                                   mode='lines', name='Arb Return', line=dict(color='#FF0000')))
-    fig_arb.update_layout(title='Arb Return', xaxis_title='Time', yaxis_title='Arb Return')
+    fig_arb.update_layout(title='Arb Return', xaxis_title='Time', yaxis_title='Arb Return (%)')
     st.plotly_chart(fig_arb, use_container_width=True)
 
     # Plot Hyperliquid funding rate
     fig_hyperliquid = go.Figure()
     fig_hyperliquid.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['annualizedFundingRate'],
                                          mode='lines', name='Hyperliquid', line=dict(color='#00BFFF')))
-    fig_hyperliquid.update_layout(title='Hyperliquid Annualized Funding Rate', xaxis_title='Time', yaxis_title='Annualized Funding Rate')
+    fig_hyperliquid.update_layout(title='Hyperliquid Annualized Funding Rate', xaxis_title='Time', yaxis_title='Annualized Funding Rate (%)')
     st.plotly_chart(fig_hyperliquid, use_container_width=True)
 
-    # Plot USDC Borrow Rate
+    # Plot Adjusted USDC Borrow Rate
     fig_usdc = go.Figure()
-    fig_usdc.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['usdc_borrow_rate'],
+    fig_usdc.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['adjusted_usdc_borrow_rate'],
                                       mode='lines', name='USDC Borrow Rate', line=dict(color='#4682B4')))
-    fig_usdc.update_layout(title='USDC Borrow Rate', xaxis_title='Time', yaxis_title='Annualized Borrow Rate')
+    fig_usdc.update_layout(title='USDC Borrow Rate', xaxis_title='Time', yaxis_title='Annualized Borrow Rate (%)')
     st.plotly_chart(fig_usdc, use_container_width=True)
 
-    # Plot WETH Borrow Rate
+    # Plot Adjusted WETH Lending Rate
     fig_weth = go.Figure()
-    fig_weth.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['weth_lend_rate'],
+    fig_weth.add_trace(go.Scatter(x=merged_df['time'], y=merged_df['adjusted_weth_lend_rate'],
                                       mode='lines', name='WETH Lending Rate', line=dict(color='#4682B4')))
-    fig_weth.update_layout(title='WETH Lending Rate', xaxis_title='Time', yaxis_title='Annualized Lending Rate')
+    fig_weth.update_layout(title='WETH Lending Rate', xaxis_title='Time', yaxis_title='Annualized Lending Rate (%)')
     st.plotly_chart(fig_weth, use_container_width=True)
 
 else:
@@ -191,7 +200,7 @@ else:
 
 # Auto-refresh every hour
 if st.button('Refresh Now'):
-    st.rerun()
+    st.experimental_rerun()
 
 # Set up a timer to refresh every hour
 st.markdown(
