@@ -19,7 +19,7 @@ def create_df(aave_df):
     return aave_df
 
 # Fetch data for both pools
-@st.cache_data
+@st.cache_data(ttl=600)
 def fetch_aave_data():
     aaves = {key: create_df(requests.get(f'https://yields.llama.fi/chartLendBorrow/{value}')) for key, value in pools.items()}
     return aaves['usdc-v3'], aaves['weth-v3']
